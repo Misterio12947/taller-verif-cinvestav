@@ -1,0 +1,38 @@
+# --- Node / Slidev ---
+node_modules/
+dist/
+.output/
+.slidev-cache/
+*.log
+npm-debug.log*
+
+# --- VCS / Synopsys artefactos ---
+work_lab*/
+csrc/
+simv
+simv.daidir/
+ucli.key
+*.vcd
+*.fsdb
+*.log
+verdiLog/
+novas.*
+DVEfiles/
+cm.vdb/
+cov_report/
+urgReport/
+.vlogansetup*
+AN.DB/
+
+# --- Exportables Slidev ---
+curso.pdf
+curso.pptx
+slides-export/
+
+# --- Editor / OS ---
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.swo
+*~

@@ -1,0 +1,3 @@
+Este laboratorio se completará en la siguiente entrega (Módulo 4).
+Aquí construiremos un TB estilo UVM con classes puras de SystemVerilog:
+  transaction, generator, driver, monitor, scoreboard, environment, agent.

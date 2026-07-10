@@ -1,0 +1,170 @@
+/* ============================================================
+   Curso Propedéutico Functional Verification — Estilo CINVESTAV
+   Paleta: azul institucional CINVESTAV + acentos técnicos
+   ============================================================ */
+
+:root {
+  /* Paleta base */
+  --cinv-blue:      #003366;   /* Azul institucional CINVESTAV */
+  --cinv-blue-lt:   #1a4d80;
+  --cinv-gold:      #d4a017;   /* Dorado acento */
+  --cinv-gray-bg:   #f7f8fa;
+  --cinv-gray-txt:  #2c2c2c;
+
+  /* Semánticos para verificación */
+  --verif-driver:    #2e86de;  /* Azul — driver / input */
+  --verif-monitor:   #10ac84;  /* Verde — monitor / observación */
+  --verif-scoreboard:#ee5253;  /* Rojo — checker / auditor */
+  --verif-coverage:  #ff9f43;  /* Naranja — coverage */
+  --verif-assertion: #a55eea;  /* Morado — assertions */
+  --verif-dut:       #576574;  /* Gris — DUT */
+}
+
+/* --------- Slide base --------- */
+.slidev-layout {
+  color: var(--cinv-gray-txt);
+}
+
+.slidev-layout h1 {
+  color: var(--cinv-blue);
+  border-bottom: 3px solid var(--cinv-gold);
+  padding-bottom: 0.3em;
+  margin-bottom: 0.6em;
+}
+
+.slidev-layout h2 {
+  color: var(--cinv-blue-lt);
+}
+
+/* --------- Callouts para analogías --------- */
+.analogy {
+  background: linear-gradient(135deg, #fff9e6 0%, #fff3cc 100%);
+  border-left: 6px solid var(--cinv-gold);
+  padding: 1em 1.2em;
+  border-radius: 6px;
+  margin: 1em 0;
+  font-style: italic;
+}
+.analogy::before {
+  content: "🎭 Analogía — ";
+  font-weight: bold;
+  font-style: normal;
+  color: #a67c00;
+}
+
+/* --------- Callout de tip del instructor --------- */
+.pro-tip {
+  background: #eaf4fb;
+  border-left: 6px solid var(--verif-driver);
+  padding: 0.8em 1em;
+  border-radius: 6px;
+  margin: 1em 0;
+  font-size: 0.9em;
+}
+.pro-tip::before {
+  content: "💡 Tip del instructor — ";
+  font-weight: bold;
+  color: var(--verif-driver);
+}
+
+/* --------- Callout de pregunta al aula --------- */
+.question {
+  background: #fdecea;
+  border-left: 6px solid var(--verif-scoreboard);
+  padding: 0.8em 1em;
+  border-radius: 6px;
+  margin: 1em 0;
+}
+.question::before {
+  content: "❓ Pregunta al aula — ";
+  font-weight: bold;
+  color: var(--verif-scoreboard);
+}
+
+/* --------- Callout warning / gotcha --------- */
+.gotcha {
+  background: #fff4e0;
+  border-left: 6px solid var(--verif-coverage);
+  padding: 0.8em 1em;
+  border-radius: 6px;
+  margin: 1em 0;
+}
+.gotcha::before {
+  content: "⚠️ Gotcha — ";
+  font-weight: bold;
+  color: #b8610a;
+}
+
+/* --------- Bloque código SystemVerilog --------- */
+.slidev-code {
+  font-size: 0.85em;
+  border-radius: 6px;
+}
+
+/* --------- Tabla comparativa --------- */
+.slidev-layout table {
+  border-collapse: collapse;
+  margin: 0.8em 0;
+  font-size: 0.9em;
+}
+.slidev-layout th {
+  background: var(--cinv-blue);
+  color: white;
+  padding: 0.5em 0.8em;
+  text-align: left;
+}
+.slidev-layout td {
+  padding: 0.4em 0.8em;
+  border-bottom: 1px solid #ddd;
+}
+.slidev-layout tr:nth-child(even) td {
+  background: var(--cinv-gray-bg);
+}
+
+/* --------- Timing badge en esquina --------- */
+.timing-badge {
+  position: absolute;
+  top: 1em;
+  right: 1em;
+  background: var(--cinv-blue);
+  color: white;
+  padding: 0.3em 0.7em;
+  border-radius: 20px;
+  font-size: 0.75em;
+  font-weight: bold;
+}
+
+/* --------- Módulo badge --------- */
+.module-badge {
+  display: inline-block;
+  background: var(--cinv-gold);
+  color: var(--cinv-blue);
+  padding: 0.2em 0.6em;
+  border-radius: 4px;
+  font-size: 0.7em;
+  font-weight: bold;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.5em;
+}
+
+/* --------- Grid layout helper para diagramas --------- */
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5em;
+  align-items: start;
+}
+
+.three-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1em;
+}
+
+/* --------- Mermaid diagrams --------- */
+.mermaid {
+  background: white;
+  border-radius: 8px;
+  padding: 1em;
+  margin: 1em 0;
+}
