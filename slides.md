@@ -15,6 +15,7 @@ transition: slide-left
 mdc: true
 aspectRatio: 16/9
 canvasWidth: 1280
+navControls: false
 fonts:
   sans: 'PT Serif'
   mono: 'Fira Code'

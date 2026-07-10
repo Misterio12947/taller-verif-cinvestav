@@ -225,3 +225,20 @@
 .slidev-layout .col-right {
   padding-left: 1em;
 }
+
+/* ============================================================
+   Ocultar controles de navegación y drawer lateral
+   Complementa `navControls: false` del frontmatter.
+   La navegación se hace con teclado (flechas, espacio, PageDown).
+   ============================================================ */
+
+.slidev-nav-controls,
+.slidev-nav,
+#slidev-nav,
+.slidev-controls,
+.slidev-controls-menu,
+.slidev-goto-dialog,
+.slidev-nav-drawer,
+[data-slidev-controls] {
+  display: none !important;
+}
