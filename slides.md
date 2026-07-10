@@ -2019,3 +2019,711 @@ layout: end
 <div class="mt-8 text-sm opacity-70">
 Cuando volvamos: construir UVM a mano, sin UVM.
 </div>
+
+---
+layout: section
+---
+
+<div class="module-badge">MÓDULO 4 · 90 min</div>
+
+# UVM a mano, sin UVM
+
+## El módulo más importante del curso
+
+<!--
+Este es el módulo estrella. Al final de M4 los estudiantes deben decir:
+"¡Ah, UVM solo organiza esto!". Sin ese aha-moment, el curso falla.
+
+Timing:
+- Motivación + arquitectura (10 min)
+- Recorrido pieza por pieza (35 min)
+- Lab 4 (40 min)
+- Post-lab: contar líneas + preparar el aha-moment (5 min)
+-->
+
+---
+layout: default
+---
+
+# Lo que traen del break
+
+En los labs 1-3 ya usaron todas las piezas de la verificación moderna:
+
+- Transacciones (`class cnt_txn`) — Lab 2
+- Randomización controlada — Lab 2
+- Coverage funcional — Lab 3
+- Assertions temporales — Lab 3
+- Un reference model en línea (variable `expected`) — desde Lab 1
+
+Pero todo esto vivía **mezclado dentro de un solo `initial begin`**. Lo van a separar hoy.
+
+<div class="mt-4 pro-tip">
+La tesis del módulo: <b>una arquitectura OO no agrega funcionalidad — agrega orden</b>. El mismo código, organizado en piezas con responsabilidades separadas.
+</div>
+
+<QuestionBox>
+Antes de arrancar: en el Lab 3, ¿cuántas líneas del <code>initial begin</code> se dedicaban a generar estímulos y cuántas a checkear resultados? Piénsenlo. Van a ver que están entrelazadas.
+</QuestionBox>
+
+---
+layout: default
+---
+
+# La idea central del módulo
+
+Vamos a descomponer el TB en **siete clases**, cada una con **una sola responsabilidad**:
+
+<div class="text-sm mt-4">
+
+| Clase | Responsabilidad única | Analogía |
+|-------|----------------------|----------|
+| `transaction` | Modelar una operación como un objeto | Un paquete de mensajería |
+| `generator` | Producir transacciones aleatorias | El almacén que empaqueta pedidos |
+| `driver` | Aplicar transacciones al bus del DUT | El conductor del camión |
+| `monitor` | Observar el DUT y reconstruir transacciones | Una cámara de seguridad |
+| `scoreboard` | Comparar observado vs. reference model | El auditor externo |
+| `environment` | Construir y orquestar todas las piezas | La empresa completa |
+| `agent` | Agrupar driver+monitor para un protocolo | El departamento de logística |
+
+</div>
+
+<Analogy>
+Piensen en una fábrica de autos. Antes escribíamos un <b>ingeniero-toderas</b> que soldaba, pintaba, empacaba y auditaba, todo en el mismo <code>initial begin</code>. Ahora tenemos <b>siete departamentos</b> — cada uno hace una sola cosa, muy bien.
+</Analogy>
+
+---
+layout: default
+---
+
+# Arquitectura completa del testbench
+
+```mermaid {scale: 0.7}
+flowchart LR
+  GEN["Generator<br/>randomize()"] -->|mailbox| DRV["Driver<br/>drive()"]
+  GEN -->|mailbox<br/>referencia| SB["Scoreboard<br/>predict() + compare()"]
+  DRV -->|virtual interface| DUT["DUT<br/>(ALU)"]
+  DUT -->|virtual interface| MON["Monitor<br/>observe()"]
+  MON -->|mailbox| SB
+  SB --> RPT["Reporte<br/>PASS / FAIL"]
+
+  style DUT fill:#576574,color:#fff
+  style GEN fill:#bbdefb
+  style DRV fill:#2e86de,color:#fff
+  style MON fill:#10ac84,color:#fff
+  style SB fill:#ee5253,color:#fff
+  style RPT fill:#fff9c4
+```
+
+<div class="mt-4 text-sm">
+
+**Tres puentes conectan las piezas:**
+
+- **mailbox #(T)** — canal FIFO tipado, thread-safe, entre clases
+- **virtual interface** — puente entre las clases (mundo OO) y el DUT (mundo módulos)
+- **environment** — el `main()` que instancia todo y arranca en paralelo con `fork/join_none`
+
+</div>
+
+---
+layout: default
+---
+
+# El DUT del laboratorio: ALU 4-bit
+
+Un DUT sencillo pero suficientemente rico para justificar la arquitectura completa:
+
+```verilog
+module alu (
+    input  logic       clk, rst_n,
+    input  logic [3:0] a, b,
+    input  logic [1:0] op,     // 00=ADD, 01=SUB, 10=AND, 11=OR
+    output logic [3:0] result,
+    output logic       zero,   // 1 si result == 0
+    output logic       carry   // solo válido en ADD
+);
+```
+
+<div class="two-col mt-4 text-sm">
+
+<div>
+
+**¿Por qué ALU y no contador?**
+
+- Cuatro operaciones distintas → coverage interesante
+- Reference model no trivial (más rico que "+1/-1")
+- Corner cases genuinos (overflow, zero, wrap)
+- Se parece a algo real (parte de un CPU)
+
+</div>
+
+<div>
+
+**Espacio de estímulos**
+- `a`: 16 valores
+- `b`: 16 valores
+- `op`: 4 valores
+- **Total: 1,024 combinaciones**
+
+Con 200 random ya cubrimos ~20% del espacio + los corner cases interesantes.
+
+</div>
+
+</div>
+
+---
+layout: default
+---
+
+# Pieza 1 — Transaction
+
+## El paquete de información que circula por el TB
+
+```verilog
+class alu_transaction;
+    // Inputs (aleatorizables)
+    rand bit [3:0] a;
+    rand bit [3:0] b;
+    rand bit [1:0] op;
+
+    // Outputs (los llenará el monitor con lo observado)
+    bit [3:0] result;
+    bit       zero;
+    bit       carry;
+
+    function string convert2string();
+        return $sformatf("a=%0h b=%0h op=%s -> result=%0h",
+                         a, b, op_str(), result);
+    endfunction
+
+    function alu_transaction clone();  // copia profunda
+        alu_transaction c = new();
+        c.a = this.a; c.b = this.b; c.op = this.op;
+        c.result = this.result; c.zero = this.zero; c.carry = this.carry;
+        return c;
+    endfunction
+endclass
+```
+
+<Analogy>
+Una <code>transaction</code> es un <b>sobre de mensajería</b>. Adentro va la información (a, b, op) y una etiqueta para el destinatario. Se puede fotocopiar (<code>clone()</code>) y describirse en texto (<code>convert2string()</code>).
+</Analogy>
+
+<div class="pro-tip">
+Cuando lleguen al Bootcamp, <code>alu_transaction</code> heredará de <code>uvm_sequence_item</code>. El resto queda casi idéntico.
+</div>
+
+---
+layout: default
+---
+
+# Pieza 2 — Generator
+
+## Fábrica de transacciones aleatorias
+
+```verilog
+class alu_generator;
+    mailbox #(alu_transaction) gen2drv;  // hacia el driver
+    mailbox #(alu_transaction) gen2sb;   // hacia el scoreboard (referencia)
+    int num_trans;
+
+    function new(mailbox #(alu_transaction) gen2drv,
+                 mailbox #(alu_transaction) gen2sb,
+                 int num_trans = 200);
+        // ... guardar handles ...
+    endfunction
+
+    task run();
+        alu_transaction t;
+        for (int i = 0; i < num_trans; i++) begin
+            t = new();
+            assert (t.randomize());
+            gen2drv.put(t);           // driver aplica al DUT
+            gen2sb.put(t.clone());    // scoreboard compara vs referencia
+        end
+    endtask
+endclass
+```
+
+<Analogy>
+El generator es el <b>almacén de pedidos</b>: fabrica sobres, los pone en dos cintas transportadoras: una hacia el <b>despachador</b> (driver) y otra hacia el <b>auditor</b> (scoreboard).
+</Analogy>
+
+<div class="gotcha">
+Notar el <code>clone()</code>: el generator manda una <b>copia</b> al scoreboard. Sin clone, driver y scoreboard compartirían el mismo objeto y se pisarían.
+</div>
+
+---
+layout: default
+---
+
+# Pieza 3 — Driver
+
+## Conductor del bus físico del DUT
+
+```verilog
+class alu_driver;
+    virtual alu_if             vif;      // handle al interface
+    mailbox #(alu_transaction) gen2drv;
+
+    function new(virtual alu_if vif, mailbox #(alu_transaction) gen2drv);
+        this.vif     = vif;
+        this.gen2drv = gen2drv;
+    endfunction
+
+    task run();
+        alu_transaction t;
+        forever begin
+            gen2drv.get(t);           // bloqueante hasta que llegue una
+            drive(t);
+        end
+    endtask
+
+    task drive(alu_transaction t);
+        @(vif.cb_tb);                  // sincronizar con clocking block
+        vif.cb_tb.a  <= t.a;
+        vif.cb_tb.b  <= t.b;
+        vif.cb_tb.op <= t.op;
+    endtask
+endclass
+```
+
+<Analogy>
+El driver es el <b>conductor del camión</b>: recibe un sobre en la bodega (mailbox), lo carga (<code>drive()</code>), y lo entrega en la dirección del DUT vía la interface. No sabe qué hay adentro del sobre, solo lo entrega.
+</Analogy>
+
+---
+layout: default
+---
+
+# Interface virtual — el puente al DUT
+
+## Cómo las clases (OO) hablan con los modules (RTL)
+
+```verilog
+interface alu_if (input logic clk, input logic rst_n);
+    logic [3:0] a, b;
+    logic [1:0] op;
+    logic [3:0] result;
+    logic       zero, carry;
+
+    clocking cb_tb @(posedge clk);
+        default input #1 output #1;
+        output a, b, op;
+        input  result, zero, carry;
+    endclocking
+
+    modport DRV (clocking cb_tb, input clk, rst_n);
+    modport MON (clocking cb_tb, input clk, rst_n);
+endinterface
+```
+
+<div class="two-col mt-4 text-sm">
+
+<div>
+
+**Clocking block resuelve dos problemas:**
+- **Race conditions** — el `#1` de skew garantiza que la clase escribe/lee después del flanco, no en el flanco
+- **Sincronización** — `@(vif.cb_tb)` avanza un ciclo determinista
+
+</div>
+
+<div>
+
+**Virtual interface** = handle a una interface en el mundo OO. Se declara así:
+
+```verilog
+class alu_driver;
+    virtual alu_if vif;
+    // ...
+endclass
+```
+
+Y se conecta al construir el driver.
+
+</div>
+
+</div>
+
+---
+layout: default
+---
+
+# Pieza 4 — Monitor
+
+## Cámara de seguridad del bus
+
+```verilog
+class alu_monitor;
+    virtual alu_if             vif;
+    mailbox #(alu_transaction) mon2sb;
+
+    function new(virtual alu_if vif, mailbox #(alu_transaction) mon2sb);
+        this.vif    = vif;
+        this.mon2sb = mon2sb;
+    endfunction
+
+    task run();
+        alu_transaction t;
+        forever begin
+            @(vif.cb_tb);
+            if (!vif.rst_n) continue;   // ignorar reset
+
+            t = new();
+            t.a      = vif.cb_tb.a;
+            t.b      = vif.cb_tb.b;
+            t.op     = vif.cb_tb.op;
+            t.result = vif.cb_tb.result;
+            t.zero   = vif.cb_tb.zero;
+            t.carry  = vif.cb_tb.carry;
+
+            mon2sb.put(t);              // publicar al scoreboard
+        end
+    endtask
+endclass
+```
+
+<Analogy>
+El monitor es una <b>cámara de seguridad</b>: mira todo, no toca nada, y envía las grabaciones (transacciones observadas) al auditor. Es <b>pasivo</b> — jamás modifica el DUT.
+</Analogy>
+
+<div class="pro-tip">
+Diferencia crucial con el driver: el driver escribe entradas y las <b>publica</b>. El monitor lee inputs Y outputs, y arma una transacción <b>completa</b>. El scoreboard usa esta transacción para saber qué hizo el DUT.
+</div>
+
+---
+layout: default
+---
+
+# Pieza 5 — Scoreboard
+
+## Auditor con reference model integrado
+
+```verilog
+class alu_scoreboard;
+    mailbox #(alu_transaction) gen2sb;   // esperado
+    mailbox #(alu_transaction) mon2sb;   // observado
+    int num_pass, num_fail;
+
+    // Reference model: la spec traducida a código
+    function void predict(alu_transaction t);
+        case (t.op)
+            2'b00: t.result = t.a + t.b;
+            2'b01: t.result = t.a - t.b;
+            2'b10: t.result = t.a & t.b;
+            2'b11: t.result = t.a | t.b;
+        endcase
+        t.zero = (t.result == 4'b0);
+    endfunction
+
+    task run();
+        alu_transaction exp, obs;
+        forever begin
+            gen2sb.get(exp);      // lo que pedimos
+            mon2sb.get(obs);      // lo que salió
+            predict(exp);         // calcular lo esperado
+            if (exp.result === obs.result) num_pass++;
+            else num_fail++;
+        end
+    endtask
+endclass
+```
+
+<Analogy>
+El scoreboard es <b>el profesor con la clave del examen</b>. Sabe la respuesta correcta (<code>predict()</code>) y la compara contra la del alumno (<code>obs</code>). No enseña, no toma exámenes — solo califica.
+</Analogy>
+
+---
+layout: default
+---
+
+# Pieza 6 — Environment
+
+## El orquestador que une todo
+
+```verilog
+class alu_env;
+    alu_generator   gen;
+    alu_driver      drv;
+    alu_monitor     mon;
+    alu_scoreboard  sb;
+
+    mailbox #(alu_transaction) gen2drv, gen2sb, mon2sb;
+    virtual alu_if vif;
+
+    function void build();
+        gen2drv = new(); gen2sb = new(); mon2sb = new();
+        gen = new(gen2drv, gen2sb, num_trans);
+        drv = new(vif, gen2drv);
+        mon = new(vif, mon2sb);
+        sb  = new(gen2sb, mon2sb);
+    endfunction
+
+    task run();
+        fork
+            gen.run();  drv.run();  mon.run();  sb.run();
+        join_none
+        wait (gen2drv.num() == 0 && gen2sb.num() == 0 && mon2sb.num() == 0);
+        sb.report();
+    endtask
+endclass
+```
+
+<Analogy>
+El environment es <b>el gerente general</b>: no manufactura ni audita, solo <b>construye la empresa</b> (build()) y <b>arranca todos los departamentos en paralelo</b> (run()).
+</Analogy>
+
+---
+layout: default
+---
+
+# Pieza 7 — Agent
+
+## Agrupamiento por protocolo (para más adelante)
+
+En este lab no lo implementamos porque solo tenemos un DUT con un solo bus. Pero conceptualmente:
+
+<div class="mt-4 text-sm">
+
+**Un `agent` agrupa las piezas que hablan el mismo protocolo:**
+- driver + monitor + sequencer para el bus AXI
+- driver + monitor + sequencer para el bus APB
+- driver + monitor + sequencer para el bus AHB
+
+Un DUT complejo (un SoC) tiene **varios agents** — uno por interfaz externa.
+
+</div>
+
+```mermaid {scale: 0.7}
+flowchart TB
+  subgraph env["Environment"]
+    subgraph a_axi["AXI Agent"]
+      d1[Driver] --- m1[Monitor] --- s1[Sequencer]
+    end
+    subgraph a_apb["APB Agent"]
+      d2[Driver] --- m2[Monitor] --- s2[Sequencer]
+    end
+    SB[Scoreboard]
+  end
+  a_axi --> SB
+  a_apb --> SB
+  style env fill:#f0f4f8
+```
+
+<Analogy>
+Un agent es un <b>departamento especializado</b>: el de logística marítima maneja barcos, el de logística terrestre maneja camiones. Comparten el mismo esquema (driver+monitor+sequencer) pero especializado por protocolo.
+</Analogy>
+
+---
+layout: default
+---
+
+# Flujo completo de una transacción
+
+```mermaid {scale: 0.65}
+sequenceDiagram
+    autonumber
+    participant GEN as Generator
+    participant SB as Scoreboard
+    participant DRV as Driver
+    participant DUT as DUT (ALU)
+    participant MON as Monitor
+
+    GEN->>GEN: randomize()
+    GEN->>DRV: gen2drv.put(t)
+    GEN->>SB: gen2sb.put(t.clone())
+    DRV->>DRV: gen2drv.get(t)
+    DRV->>DUT: @cb_tb: a,b,op <= t
+    DUT-->>MON: result,zero,carry
+    MON->>MON: sample bus
+    MON->>SB: mon2sb.put(t_obs)
+    SB->>SB: predict(exp)
+    SB->>SB: compare(exp, obs)
+    Note over SB: PASS o FAIL
+```
+
+<div class="mt-4 text-sm">
+
+Este diagrama es la **respiración del testbench**. Ocurre una vez por transacción. Con 200 transacciones son 200 ciclos completos del sequence diagram.
+
+</div>
+
+---
+layout: default
+---
+
+# Laboratorio 4 — Construir la arquitectura completa
+
+<div class="module-badge">40 min · labs/lab4_uvm_a_mano</div>
+
+## Objetivo
+
+Correr un testbench de 7 clases contra la ALU 4-bit. Las clases ya están escritas — solo hay que instanciar el DUT y arrancar el environment en el `tb_top_starter.sv`.
+
+<div class="two-col mt-4 text-sm">
+
+<div>
+
+**Pasos**
+1. Explorar los 6 archivos de clases (~15 min de lectura crítica)
+2. TODO #1: instanciar el DUT conectado al interface
+3. TODO #2: `env = new()`, `env.build()`, `env.run()`
+4. Correr `./run.sh starter` → deben ver 200 PASS
+5. Bonus: `./run.sh N 10000` → escala linealmente
+6. Bonus: inyectar un bug en `alu.sv` y confirmar que el SB lo detecta
+
+</div>
+
+<div>
+
+**Éxito del lab**
+- 200 PASS, 0 FAIL con seed=1
+- Waveform muestra el bus cambiando cada ciclo
+- Escala a 10,000 sin cambios
+
+**Al terminar, comparar con Lab 3:**
+- Mismo DUT-equivalente
+- Mucho más ordenado
+- Testable con miles de transacciones sin cambiar el TB
+
+</div>
+
+</div>
+
+<!--
+Este es el lab crítico del curso. NO recortar tiempo aquí.
+
+Durante el lab, pasearse por el aula haciendo preguntas socráticas:
+- "¿Dónde vive la aleatoriedad?"
+- "¿Si mañana el DUT cambia sus pines, qué archivos toco?"
+- "¿Por qué el driver no conoce el reference model?"
+
+Estas preguntas siembran el aha-moment del siguiente slide.
+-->
+
+---
+layout: default
+---
+
+# Post-lab: cuenten sus líneas de código
+
+Después de que su lab pase con 200 PASS, corran:
+
+```bash
+wc -l *.sv
+```
+
+Verán algo así:
+
+```
+   55 transaction.sv
+   35 generator.sv
+   40 driver.sv
+   35 monitor.sv
+   80 scoreboard.sv
+   55 env.sv
+   60 tb_top.sv
+   30 alu_if.sv
+  ---
+  390 total
+```
+
+<div class="mt-4">
+
+**Con ~390 líneas construyeron:**
+- Randomización controlada
+- Reference model
+- Auto-checking
+- Reporte pass/fail
+- Escalable a miles de transacciones
+- Modificable con cambios locales
+
+</div>
+
+<QuestionBox>
+Sin ver el código: ¿en cuál de los siete archivos vive el <b>reference model</b>? ¿En cuál vive la <b>aleatoriedad</b>? ¿En cuál vive el <b>conocimiento del bus</b>? Respondan mentalmente.
+</QuestionBox>
+
+<!--
+Las respuestas:
+- Reference model → scoreboard.sv
+- Aleatoriedad → generator.sv (y las constraints en transaction.sv)
+- Conocimiento del bus → driver.sv y monitor.sv (y el interface)
+
+Si responden rápido y bien, entendieron la separación de responsabilidades.
+Ese es el aha-moment. UVM formaliza esto.
+-->
+
+---
+layout: default
+---
+
+# Y esto que acaban de construir...
+
+## Se llama UVM
+
+<div class="mt-6">
+
+Lo que hicieron en las últimas dos horas es la **arquitectura de UVM** completa, sin usar UVM.
+
+En el módulo siguiente van a ver que UVM es **exactamente esto**, con:
+- Nombres estandarizados (`uvm_sequence_item`, `uvm_driver`, `uvm_env`)
+- Infraestructura industrial (factory, config_db, fases)
+- Reporting profesional
+- Integración con VCS/Verdi/Coverage
+
+Pero la **arquitectura conceptual — la que importa** — ya la tienen.
+
+</div>
+
+<div class="mt-6 pro-tip">
+Cuando en el Bootcamp les enseñen <code>class my_driver extends uvm_driver #(my_txn);</code>, ustedes van a decir <i>"ah, es mi <code>alu_driver</code> con herencia"</i>. Y tendrán razón.
+</div>
+
+<QuestionBox>
+Antes de M5: <b>¿alguien puede resumir en una frase qué hace cada una de las 7 piezas?</b>
+</QuestionBox>
+
+---
+layout: default
+---
+
+# Resumen del Módulo 4
+
+<div class="mt-4">
+
+**Las siete piezas del testbench moderno:**
+
+1. **Transaction** — objeto de datos que circula
+2. **Generator** — fábrica de transacciones aleatorias
+3. **Driver** — conductor del bus del DUT
+4. **Monitor** — cámara pasiva del bus
+5. **Scoreboard** — auditor con reference model
+6. **Environment** — orquestador que construye y arranca
+7. **Agent** — agrupamiento por protocolo (uno por interfaz externa)
+
+**Los tres puentes:**
+- `mailbox #(T)` entre clases
+- `virtual interface` entre clases y DUT
+- `fork/join_none` para paralelismo
+
+**El aha-moment:** todo esto **es** UVM. Solo faltan los nombres formales y la infraestructura industrial. Eso viene en M5.
+
+</div>
+
+<!--
+Timing acumulado esperado al final de M4: ~5h 15min.
+Nos quedan M5 (60 min) + M6 (30 min) + M7 (15 min) = 1h 45min.
+Vamos justos. Si M4 se alarga, recortar de M6 (menos crítico).
+-->
+
+---
+layout: end
+---
+
+# Fin del Módulo 4
+
+## Siguiente: ahora sí, ¿qué es UVM?
+
+<div class="mt-8 text-sm opacity-70">
+Van a ver que M5 es un mapeo directo de lo que ya construyeron.
+</div>
