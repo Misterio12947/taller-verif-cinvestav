@@ -2727,3 +2727,1152 @@ layout: end
 <div class="mt-8 text-sm opacity-70">
 Van a ver que M5 es un mapeo directo de lo que ya construyeron.
 </div>
+
+---
+layout: section
+---
+
+<div class="module-badge">MÓDULO 5 · 60 min</div>
+
+# Ahora sí: ¿qué es UVM?
+
+## Todo lo que construyeron, con nombres formales
+
+<!--
+M5 es el módulo del "traducción". No hay codificación nueva.
+Todo el tiempo se dedica a mapear lo del Lab 4 con la nomenclatura UVM.
+
+Timing:
+- Historia + qué es UVM (10 min)
+- Mapeo directo pieza por pieza (25 min)
+- Jerarquía + fases + factory + config_db (20 min)
+- Resumen + Q&A (5 min)
+-->
+
+---
+layout: default
+---
+
+# Historia rápida — de dónde viene UVM
+
+<div class="mt-4 text-sm">
+
+| Año | Metodología | Origen |
+|-----|-------------|--------|
+| 2003 | **VMM** (Verification Methodology Manual) | Synopsys — primer intento serio |
+| 2006 | **OVM** (Open Verification Methodology) | Cadence + Mentor |
+| 2011 | **UVM 1.0** | Accellera — merge de OVM + VMM |
+| 2020 | **UVM 2020-1.2** (IEEE 1800.2) | Estandarizado por IEEE |
+| Hoy | **UVM 2020-2.0** | El estándar de facto en la industria |
+
+</div>
+
+<div class="mt-6">
+
+**UVM no es un lenguaje nuevo.** Es una **librería de clases SystemVerilog** que codifica las mejores prácticas de las tres metodologías anteriores. Cualquier simulador comercial (VCS, Xcelium, Questa) la trae preinstalada.
+
+</div>
+
+<Analogy>
+UVM es como <b>Standard Template Library (STL) para verificación</b>. C++ tiene <code>std::vector</code>, <code>std::map</code>, etc. — no se reinventan. UVM tiene <code>uvm_driver</code>, <code>uvm_monitor</code>, <code>uvm_env</code> — no se reinventan.
+</Analogy>
+
+<!--
+Insistir en que UVM NO es un lenguaje. Es un SET de clases.
+Escrito 100% en SystemVerilog IEEE 1800.
+Se importa así: `import uvm_pkg::*;`
+-->
+
+---
+layout: default
+---
+
+# Lo que UVM agrega sobre lo que ya construyeron
+
+<div class="text-sm mt-4">
+
+| Ya tienen del Lab 4 | UVM le agrega |
+|--------------------|---------------|
+| Arquitectura de 7 piezas | Nombres estandarizados (`uvm_*`) |
+| `mailbox #(T)` entre clases | `uvm_analysis_port` con múltiples subscribers |
+| `virtual interface` al DUT | `uvm_config_db` para pasar el handle sin globals |
+| `fork/join_none` en `env.run()` | Sistema automático de **fases** (build/connect/run/report) |
+| `class extends class` manual | `uvm_factory` — swap de clases sin editar código |
+| `$display("[TB]...")` | `uvm_info`, `uvm_warning`, `uvm_error`, `uvm_fatal` con verbosidad |
+| Reporte manual con `$display` | `uvm_report_server` automático |
+| Nada para registros | `uvm_reg` — modelado y verificación de registros del DUT |
+
+</div>
+
+<div class="mt-4 pro-tip">
+Todo esto es <b>infraestructura industrial</b>, no arquitectura. La arquitectura ya la entienden. Lo demás son conveniencias que ahorran miles de líneas de boilerplate en un proyecto grande.
+</div>
+
+---
+layout: default
+---
+
+# Mapeo pieza por pieza — Transaction
+
+<div class="two-col text-sm">
+
+<div>
+
+**Su clase del Lab 4**
+
+```verilog
+class alu_transaction;
+  rand bit [3:0] a;
+  rand bit [3:0] b;
+  rand bit [1:0] op;
+
+  bit [3:0] result;
+  bit       zero;
+  bit       carry;
+
+  function string convert2string();
+    return $sformatf("a=%h", a);
+  endfunction
+
+  function alu_transaction clone();
+    // ... copia manual ...
+  endfunction
+endclass
+```
+
+</div>
+
+<div>
+
+**En UVM**
+
+```verilog
+class alu_transaction extends uvm_sequence_item;
+  `uvm_object_utils(alu_transaction)
+
+  rand bit [3:0] a;
+  rand bit [3:0] b;
+  rand bit [1:0] op;
+
+  bit [3:0] result;
+  bit       zero;
+  bit       carry;
+
+  function new(string name = "alu_txn");
+    super.new(name);
+  endfunction
+
+  // convert2string(), clone(), copy(), compare()
+  // se heredan del framework
+endclass
+```
+
+</div>
+
+</div>
+
+<div class="mt-3">
+
+**Lo que UVM aporta:** herencia de `uvm_sequence_item` (que trae `clone`, `copy`, `compare`, `pack`/`unpack` gratis) + macro `` `uvm_object_utils `` que la registra en el factory.
+
+</div>
+
+---
+layout: default
+---
+
+# Mapeo pieza por pieza — Driver
+
+<div class="two-col text-sm">
+
+<div>
+
+**Su clase del Lab 4**
+
+```verilog
+class alu_driver;
+  virtual alu_if vif;
+  mailbox #(alu_transaction) gen2drv;
+
+  function new(virtual alu_if vif,
+               mailbox #(alu_transaction) mb);
+    this.vif = vif;
+    this.gen2drv = mb;
+  endfunction
+
+  task run();
+    alu_transaction t;
+    forever begin
+      gen2drv.get(t);
+      drive(t);
+    end
+  endtask
+endclass
+```
+
+</div>
+
+<div>
+
+**En UVM**
+
+```verilog
+class alu_driver extends uvm_driver #(alu_transaction);
+  `uvm_component_utils(alu_driver)
+  virtual alu_if vif;
+
+  function new(string name, uvm_component parent);
+    super.new(name, parent);
+  endfunction
+
+  function void build_phase(uvm_phase phase);
+    uvm_config_db#(virtual alu_if)::get(
+      this, "", "vif", vif);
+  endfunction
+
+  task run_phase(uvm_phase phase);
+    forever begin
+      seq_item_port.get_next_item(req);
+      drive(req);
+      seq_item_port.item_done();
+    end
+  endtask
+endclass
+```
+
+</div>
+
+</div>
+
+<div class="mt-3 pro-tip">
+Diferencias clave: fases (<code>build_phase</code> vs <code>new</code>), <code>uvm_config_db</code> reemplaza el argumento del constructor, y <code>seq_item_port</code> reemplaza el mailbox. La <b>lógica de drive() es idéntica</b>.
+</div>
+
+---
+layout: default
+---
+
+# Mapeo pieza por pieza — Monitor
+
+<div class="two-col text-sm">
+
+<div>
+
+**Su clase**
+
+```verilog
+class alu_monitor;
+  virtual alu_if vif;
+  mailbox #(alu_transaction) mon2sb;
+
+  task run();
+    alu_transaction t;
+    forever begin
+      @(vif.cb_tb);
+      t = new();
+      // ... sample bus ...
+      mon2sb.put(t);
+    end
+  endtask
+endclass
+```
+
+Un subscriber (el scoreboard).
+
+</div>
+
+<div>
+
+**En UVM**
+
+```verilog
+class alu_monitor extends uvm_monitor;
+  `uvm_component_utils(alu_monitor)
+  virtual alu_if vif;
+
+  uvm_analysis_port #(alu_transaction) ap;
+
+  function void build_phase(uvm_phase phase);
+    ap = new("ap", this);
+    // ... get vif del config_db ...
+  endfunction
+
+  task run_phase(uvm_phase phase);
+    forever begin
+      @(vif.cb_tb);
+      // ... sample ...
+      ap.write(t);
+    end
+  endtask
+endclass
+```
+
+Múltiples subscribers (SB, coverage, log).
+
+</div>
+
+</div>
+
+<div class="mt-3">
+
+**Aportación clave de UVM:** `uvm_analysis_port` es <b>1-a-N</b> (múltiples subscribers). Un mailbox es 1-a-1. En un TB real, el monitor publica a scoreboard, coverage collector y logger simultáneamente — con analysis_port es una línea.
+
+</div>
+
+---
+layout: default
+---
+
+# La jerarquía UVM
+
+```mermaid {scale: 0.65}
+classDiagram
+    class uvm_test {
+      +run_test()
+    }
+    class uvm_env {
+      +build_phase()
+      +connect_phase()
+    }
+    class uvm_agent {
+      +is_active
+      +build_phase()
+    }
+    class uvm_sequencer
+    class uvm_driver {
+      +seq_item_port
+      +run_phase()
+    }
+    class uvm_monitor {
+      +analysis_port
+      +run_phase()
+    }
+    class uvm_scoreboard {
+      +analysis_imp
+    }
+    class uvm_sequence {
+      +body()
+    }
+    class uvm_sequence_item
+
+    uvm_test --> uvm_env
+    uvm_env --> uvm_agent
+    uvm_env --> uvm_scoreboard
+    uvm_agent --> uvm_sequencer
+    uvm_agent --> uvm_driver
+    uvm_agent --> uvm_monitor
+    uvm_sequencer --> uvm_driver : TLM
+    uvm_sequence --> uvm_sequencer : starts on
+    uvm_sequence_item ..> uvm_sequence : produced by
+```
+
+<div class="mt-3 text-sm">
+
+Esta jerarquía es <b>exactamente</b> la del Lab 4 con dos adiciones: <code>uvm_test</code> (arriba) que arranca el env, y <code>uvm_sequencer</code> (dentro del agent) que separa la lógica de "qué generar" (sequence) de "cómo entregar" (sequencer).
+
+</div>
+
+---
+layout: default
+---
+
+# Las fases de UVM
+
+## Cómo el framework orquesta la vida del testbench
+
+```mermaid {scale: 0.75}
+flowchart LR
+  B["build_phase()<br/>crear componentes"] --> C["connect_phase()<br/>conectar TLM ports"]
+  C --> ER["end_of_elaboration()"]
+  ER --> SR["start_of_simulation()"]
+  SR --> R["run_phase()<br/>ejecutar test"]
+  R --> EX["extract_phase()"]
+  EX --> CK["check_phase()<br/>validar resultados"]
+  CK --> RP["report_phase()<br/>imprimir PASS/FAIL"]
+
+  style B fill:#bbdefb
+  style R fill:#c8e6c9
+  style RP fill:#fff9c4
+```
+
+<div class="mt-3 text-sm">
+
+**Fases automáticas del framework — no las llaman ustedes, UVM las llama en orden:**
+
+- **build_phase** — instanciar componentes (era su `env.build()`)
+- **connect_phase** — conectar analysis_ports y seq_item_ports (los mailboxes de su lab)
+- **run_phase** — la simulación real corre aquí (era su `env.run()` con fork/join_none)
+- **check_phase** / **report_phase** — validar y reportar (era su `sb.report()`)
+
+</div>
+
+<div class="pro-tip">
+Ustedes en el Lab 4 llamaron <code>build()</code> y <code>run()</code> manualmente. UVM las llama <b>automáticamente</b> en todos los componentes del árbol. Ahorra decenas de líneas de plumbing.
+</div>
+
+---
+layout: default
+---
+
+# Factory — reemplazar clases sin editar código
+
+## La automatización más útil de UVM
+
+<div class="two-col text-sm mt-4">
+
+<div>
+
+**Escenario:** el proyecto usa `alu_driver`. Para un test específico quieren un `alu_driver_with_errors` (inyecta errores). Sin UVM:
+
+```verilog
+// Editar env.sv:
+alu_driver_with_errors drv;
+drv = new(...);
+```
+
+Y reeditar para cada test. Insostenible.
+
+</div>
+
+<div>
+
+**Con UVM factory:**
+
+```verilog
+// En el env, siempre:
+drv = alu_driver::type_id::create("drv", this);
+
+// En el test que quiere el override:
+function void build_phase(uvm_phase phase);
+  alu_driver::type_id::set_type_override_via_type(
+    alu_driver_with_errors::get_type()
+  );
+  super.build_phase(phase);
+endfunction
+```
+
+**El env no cambia.** El test decide qué clase se instancia.
+
+</div>
+
+</div>
+
+<Analogy>
+Factory es el <b>servicio de reemplazo de partes</b> de UVM. El env pide "un driver" y factory decide cuál entregar según el test. Es <b>polimorfismo</b> — pero configurado desde afuera.
+</Analogy>
+
+---
+layout: default
+---
+
+# config_db — pasar handles sin globals
+
+## Cómo el env le pasa el `virtual interface` al driver
+
+<div class="mt-4 text-sm">
+
+**En el Lab 4** el interface se pasaba como argumento del constructor: `drv = new(vif, mb);`
+
+**En UVM** eso no funciona porque UVM llama `new()` automáticamente sin parámetros del usuario. Solución: **config_db**, una base de datos global tipada.
+
+```verilog
+// En el tb_top (fuera de todo componente):
+initial begin
+  uvm_config_db#(virtual alu_if)::set(null, "*", "vif", tb_vif);
+  run_test("alu_test");
+end
+
+// Dentro del driver.build_phase():
+if (!uvm_config_db#(virtual alu_if)::get(this, "", "vif", vif))
+  `uvm_fatal("VIF", "No se pudo obtener virtual interface")
+```
+
+</div>
+
+<div class="mt-3">
+
+**Ventajas:**
+- No hay variables globales
+- El scope se puede restringir (`"*"` global, `"env.agent.*"` local)
+- Cualquier componente lo puede consumir sin conocer al productor
+- Tipado — el compilador chequea que sean del mismo tipo
+
+</div>
+
+---
+layout: default
+---
+
+# TLM — comunicación tipada entre componentes
+
+## Los "cables" de UVM entre analysis_ports
+
+<div class="mt-4 text-sm">
+
+**TLM (Transaction-Level Modeling)** es el sistema de comunicación de UVM. Reemplaza a los mailboxes.
+
+```verilog
+// En el monitor:
+uvm_analysis_port #(alu_transaction) ap;
+
+// En el scoreboard:
+uvm_analysis_imp #(alu_transaction, alu_scoreboard) analysis_export;
+
+function void write(alu_transaction t);
+  // ... procesa la transacción ...
+endfunction
+
+// En el env.connect_phase():
+mon.ap.connect(sb.analysis_export);
+```
+
+</div>
+
+<div class="mt-3 text-sm">
+
+**Tipos de puertos TLM:**
+- **put_port / get_port** — 1-a-1 bloqueante (equivalente a mailbox básico)
+- **analysis_port / analysis_imp** — 1-a-N no bloqueante (broadcast)
+- **seq_item_port / seq_item_export** — canal sequencer-driver
+- **tlm_fifo** — FIFO buffered para desacoplar productor y consumidor
+
+</div>
+
+<div class="pro-tip">
+Cuando ustedes vean <code>mon.ap.connect(sb.ap_imp)</code> en el Bootcamp, es el <b>mismo</b> concepto de sus mailboxes del Lab 4 — con broadcast y tipado más estricto.
+</div>
+
+---
+layout: default
+---
+
+# Reporting — cómo hablan los componentes UVM
+
+## Reemplazo profesional de $display
+
+```verilog
+`uvm_info  ("SB", $sformatf("txn %0d: PASS", num), UVM_LOW)
+`uvm_warning("SB", "Timeout parcial en respuesta")
+`uvm_error ("SB", $sformatf("expected=%h observed=%h", exp, obs))
+`uvm_fatal ("VIF", "Virtual interface no configurado")
+```
+
+<div class="text-sm mt-4">
+
+**Ventajas sobre `$display`:**
+- **Verbosidad ajustable en runtime**: `+UVM_VERBOSITY=UVM_HIGH` para debug, `UVM_LOW` para producción
+- **Filtrado por componente**: `+uvm_set_verbosity=env.agent.drv,_ALL_,UVM_DEBUG,run`
+- **Conteo automático**: al final, el `uvm_report_server` imprime resumen de errores/warnings
+- **Formato estándar**: `[UVM_ERROR @ 250ns] SB: expected=... observed=...`
+- **`uvm_fatal` termina la simulación** con código de salida distinto de PASS
+
+</div>
+
+<div class="pro-tip">
+En CI/CD, un test que emite <b>1+ uvm_error</b> es FAIL automático. En su Lab 4 tuvieron que contar errores manualmente en <code>num_fail</code>. UVM lo hace solo.
+</div>
+
+---
+layout: default
+---
+
+# Un test UVM completo — anatomía mínima
+
+<div class="text-sm mt-4">
+
+```verilog
+class alu_test extends uvm_test;
+  `uvm_component_utils(alu_test)
+  alu_env env;
+
+  function new(string name, uvm_component parent);
+    super.new(name, parent);
+  endfunction
+
+  function void build_phase(uvm_phase phase);
+    super.build_phase(phase);
+    env = alu_env::type_id::create("env", this);
+  endfunction
+
+  task run_phase(uvm_phase phase);
+    alu_sequence seq;
+    phase.raise_objection(this);
+    seq = alu_sequence::type_id::create("seq");
+    seq.start(env.agent.sequencer);
+    phase.drop_objection(this);
+  endtask
+endclass
+```
+
+</div>
+
+<div class="mt-3 text-sm">
+
+Comparen con su `initial begin` del Lab 4: `env = new(vif); env.build(); env.run();`. Es literalmente lo mismo con nombres formales. **La `phase.raise_objection` es el mecanismo UVM para decir "todavía no terminen — sigo trabajando"**. Sin ella, `run_phase` termina cuando no hay tareas pendientes.
+
+</div>
+
+---
+layout: default
+---
+
+# Resumen del Módulo 5
+
+<div class="mt-4">
+
+**Lo que aprendieron:**
+
+1. UVM = librería de clases SystemVerilog (IEEE 1800.2), no un lenguaje nuevo
+2. La **arquitectura** de UVM es idéntica a la que construyeron en el Lab 4
+3. UVM agrega **infraestructura industrial**: fases automáticas, factory, config_db, TLM, reporting, factory
+4. Cada clase suya tiene su equivalente `uvm_*` con la misma responsabilidad
+5. La curva de aprendizaje del Bootcamp será **mapear conceptos que ya conocen a nombres nuevos**, no aprender arquitectura nueva
+
+</div>
+
+<div class="mt-4 pro-tip">
+Cuando salgan del Bootcamp y escriban <code>class my_driver extends uvm_driver #(my_txn);</code>, van a estar escribiendo su <code>alu_driver</code> del Lab 4 con herencia y factory. La arquitectura ya la dominan.
+</div>
+
+<QuestionBox>
+Antes de M6: <b>¿pueden nombrar las 4 fases más importantes de un componente UVM?</b>
+Respuesta esperada: build, connect, run, report.
+</QuestionBox>
+
+---
+layout: end
+---
+
+# Fin del Módulo 5
+
+## Siguiente: el flujo ASIC completo y las herramientas Synopsys
+
+<div class="mt-8 text-sm opacity-70">
+Dónde encaja VCS, Verdi, Design Compiler y las demás.
+</div>
+
+---
+layout: section
+---
+
+<div class="module-badge">MÓDULO 6 · 30 min</div>
+
+# El flujo ASIC y el ecosistema Synopsys
+
+## Dónde encaja cada herramienta en el flujo profesional
+
+<!--
+M6 es un módulo de contexto. No hay codificación.
+Es "el mapa de la industria" — para que sepan qué hace cada tool
+y cómo se conectan.
+
+Timing: rápido, 3-4 min por herramienta.
+-->
+
+---
+layout: default
+---
+
+# El flujo ASIC completo
+
+```mermaid {scale: 0.55}
+flowchart TD
+  SPEC["Spec /<br/>Arquitectura"] --> RTL["RTL Design<br/>Verilog / SV"]
+  RTL --> LINT["Lint<br/>(SpyGlass)"]
+  RTL --> SIM["Simulación funcional<br/>(VCS + Verdi)"]
+  RTL --> FRM["Verificación formal<br/>(VC Formal)"]
+  LINT --> SYN
+  SIM --> SYN["Síntesis lógica<br/>(Design Compiler)"]
+  FRM --> SYN
+  SYN --> GLS1["GLS pre-layout<br/>(VCS con netlist)"]
+  GLS1 --> PNR["Place & Route<br/>(IC Compiler II / Fusion)"]
+  PNR --> GLS2["GLS post-layout"]
+  GLS2 --> STA["Sign-off timing<br/>(PrimeTime)"]
+  STA --> DRC["DRC / LVS<br/>(IC Validator)"]
+  DRC --> GDS["GDS<br/>(a la fab)"]
+
+  style RTL fill:#e3f2fd
+  style SIM fill:#c8e6c9
+  style FRM fill:#c8e6c9
+  style SYN fill:#fff9c4
+  style PNR fill:#ffe0b2
+  style STA fill:#ffcdd2
+  style GDS fill:#a5d6a7
+```
+
+<div class="mt-3 text-sm">
+
+**Ustedes en este curso trabajan en la parte verde: verificación funcional.** El resto es contexto que los ayudará a entender por qué se hace lo que se hace.
+
+</div>
+
+---
+layout: default
+---
+
+# VCS — el simulador
+
+**Categoría:** Simulador de eventos discretos para Verilog / SystemVerilog / UVM
+**Fabricante:** Synopsys
+**Rol en el flujo:** el motor sobre el que corren *todos* los testbenches
+
+<div class="mt-4 text-sm">
+
+**Comandos básicos** (ya los usaron en los labs):
+
+```bash
+vcs -full64 -sverilog -debug_access+all -kdb -lca -o simv \
+    alu.sv alu_if.sv tb_top.sv
+./simv +ntb_random_seed=1 +N=200
+```
+
+**Flags críticos:**
+- `-sverilog` — habilita constructs de SystemVerilog
+- `-debug_access+all -kdb` — habilita debug con Verdi
+- `-assert svaext` — assertions SVA
+- `-cm line+cond+fsm+tgl+branch+assert` — coverage recolectado
+
+</div>
+
+<Analogy>
+VCS es el <b>motor de un auto de carreras</b>: sin él nada corre. Todos los demás tools (Verdi, URG, Coverage) son <b>tablero, diagnósticos y telemetría</b> sobre VCS.
+</Analogy>
+
+---
+layout: default
+---
+
+# Verdi — el debug
+
+**Categoría:** Waveform viewer + debugger de RTL
+**Fabricante:** Synopsys
+**Rol en el flujo:** ver, buscar, entender qué pasó en la simulación
+
+<div class="two-col mt-4 text-sm">
+
+<div>
+
+**Funciones típicas:**
+- Ver waveforms de señales (VCD, FSDB)
+- Ir del waveform al RTL con click
+- Buscar causa raíz de un valor X
+- Ver jerarquía del diseño
+- Debug de UVM (`fsdbDumpMDA`)
+- Coverage viewer integrado
+
+</div>
+
+<div>
+
+```bash
+verdi -sv -f alu.sv alu_if.sv tb_top.sv \
+  -ssf tb_alu.fsdb &
+```
+
+Con el DUT y el FSDB abre la GUI. Se navega entre waveform, source y schematic.
+
+</div>
+
+</div>
+
+<div class="pro-tip">
+Verdi es donde vive el 80% del tiempo de un verification engineer. Aprender sus atajos (búsqueda, marcadores, driver tracing) hace la diferencia entre debug de 10 min y de 3 horas.
+</div>
+
+---
+layout: default
+---
+
+# SpyGlass — el linter
+
+**Categoría:** Análisis estático de RTL
+**Fabricante:** Synopsys (adquirido de Atrenta)
+**Rol en el flujo:** cazar errores <b>antes</b> de simular
+
+<div class="mt-4 text-sm">
+
+**Detecta cosas que la simulación no ve, o ve tarde:**
+- Latches inferidos (siempre bug)
+- FSMs con estados inalcanzables
+- Multi-driven nets
+- Signals sin driver
+- Convenciones de nomenclatura violadas
+- Clock domain crossings problemáticos
+- Violaciones de reglas del proyecto (por ejemplo "todos los flip-flops deben tener reset")
+
+</div>
+
+<Analogy>
+SpyGlass es el <b>corrector ortográfico</b> del RTL. Simular sin correr lint antes es como publicar un libro sin pasar por el editor — vas a encontrar errores en producción.
+</Analogy>
+
+<div class="pro-tip">
+En proyectos serios, <b>ningún RTL entra a repository sin pasar SpyGlass limpio</b>. Es política. Los CI systems lo enforçan.
+</div>
+
+---
+layout: default
+---
+
+# VC Formal — verificación formal
+
+**Categoría:** Verificación matemática (no simulación)
+**Fabricante:** Synopsys
+**Rol en el flujo:** probar propiedades **exhaustivamente** sin correr estímulos
+
+<div class="mt-4 text-sm">
+
+**Diferencia con simulación:**
+- **Simulación:** aplicas estímulos, ves qué pasa. Cobertura parcial.
+- **Formal:** el tool <b>demuestra matemáticamente</b> que una propiedad se cumple <b>para todos los estímulos posibles</b>.
+
+**Ejemplo:** "El árbitro nunca da acceso a dos masters al mismo tiempo."
+- Simulación: pruebas 10,000 escenarios, ninguno falla. ¿Y el escenario 10,001?
+- Formal: prueba matemática. Si pasa, es para siempre.
+
+</div>
+
+<Analogy>
+Formal es como una <b>demostración de teorema</b>. Simulación es como <b>probar con muchos ejemplos</b>. Formal cubre 100%, simulación cubre lo que probaste.
+</Analogy>
+
+<div class="gotcha">
+Formal solo escala a diseños pequeños o bloques individuales. Un chip completo <b>no</b> se verifica formalmente — se usa formal en <b>bloques críticos</b> (árbitros, controladores de memoria) y simulación en el resto.
+</div>
+
+---
+layout: default
+---
+
+# Design Compiler — síntesis lógica
+
+**Categoría:** Compilador RTL → gates
+**Fabricante:** Synopsys
+**Rol en el flujo:** transformar Verilog a una netlist de compuertas lógicas específicas del PDK
+
+<div class="mt-4 text-sm">
+
+**Input:** RTL (`.v`, `.sv`) + constraints (`.sdc`) + librería (`.lib` o `.db`)
+**Output:** Netlist gate-level (`.v`) + timing report + área report
+
+**Comando canónico:**
+
+```bash
+dc_shell -f run.tcl
+```
+
+Donde `run.tcl` tiene `read_verilog`, `read_sdc`, `compile_ultra`, `write`, etc.
+
+**Métricas que reporta:**
+- Área total (en μm²)
+- Slack (¿cumple el timing pedido en el SDC?)
+- Consumo dinámico y estático
+- Utilización de cada tipo de celda
+
+</div>
+
+<div class="pro-tip">
+Después de sintetizar hay que hacer <b>GLS (Gate-Level Simulation)</b>: correr el TB del Lab 4 pero contra la netlist (no el RTL). Si el TB pasa contra RTL pero falla contra netlist → hay un bug de síntesis o de las constraints.
+</div>
+
+---
+layout: default
+---
+
+# IC Compiler II / Fusion Compiler — Place & Route
+
+**Categoría:** Herramienta de implementación física
+**Fabricante:** Synopsys
+**Rol en el flujo:** ubicar las celdas físicamente en el chip y rutear las conexiones
+
+<div class="mt-4 text-sm">
+
+**Input:** Netlist de gates + PDK físico + constraints
+**Output:** Layout (`.def`, `.gds`) listo para tape-out
+
+**Etapas dentro de PnR:**
+1. **Floorplan** — dónde van los bloques principales
+2. **Powergrid** — mallas de VDD/VSS
+3. **Placement** — dónde va cada celda individual
+4. **CTS (Clock Tree Synthesis)** — construir árbol de clock balanceado
+5. **Routing** — conectar todas las señales
+6. **Sign-off checks** — DRC, LVS, timing
+
+</div>
+
+<Analogy>
+Design Compiler es como <b>escribir la receta</b> de un edificio. IC Compiler II es como <b>construirlo físicamente</b>: dónde va cada ladrillo, cómo pasan los cables, dónde están las escaleras.
+</Analogy>
+
+---
+layout: default
+---
+
+# PrimeTime — sign-off de timing
+
+**Categoría:** Static Timing Analysis (STA)
+**Fabricante:** Synopsys
+**Rol en el flujo:** verificar que **todos los paths** del chip cumplen el timing pedido
+
+<div class="mt-4 text-sm">
+
+**Analiza sin simular**:
+- Setup slack (¿llega la señal antes del flanco?)
+- Hold slack (¿se mantiene después del flanco?)
+- Todos los paths entre flip-flops
+- Todas las corners PVT (proceso × voltaje × temperatura)
+
+**Ejemplo de salida:**
+
+```
+Startpoint: reg_a/CK  (rising edge triggered flip-flop)
+Endpoint:   reg_b/D  (rising edge triggered flip-flop)
+Path Group: clk
+Path Type: max
+Slack (MET): 0.15
+```
+
+</div>
+
+<div class="pro-tip">
+Sin PrimeTime limpio, no hay tape-out. Es el <b>último checkpoint</b> antes de mandar el chip a fabricar. Un WNS negativo significa que el chip no va a correr a la frecuencia especificada.
+</div>
+
+---
+layout: default
+---
+
+# El ecosistema completo — cómo se conectan
+
+<div class="mt-4 text-sm">
+
+```
+                  ┌──────────────────────────────────────┐
+                  │        Verification Engineer          │
+                  │        (ustedes en 6 meses)          │
+                  └──────────────────────────────────────┘
+                              │
+       ┌──────────────────────┼──────────────────────┐
+       ▼                      ▼                      ▼
+   [SpyGlass]            [VCS + UVM]           [VC Formal]
+   Lint estático         Simulación funcional   Formal
+                              │
+                              ▼
+                          [Verdi]
+                          Debug + Coverage
+                              │
+                              ▼
+                          [URG]
+                          Reporte de coverage
+```
+
+</div>
+
+<div class="mt-4">
+
+**Estas cinco herramientas son el "verification tooling" del proyecto.** El resto (DC, ICC2, PT) las usa el equipo de implementación física.
+
+</div>
+
+<div class="pro-tip">
+En un Bootcamp de una semana no verán todas. Van a profundizar en <b>VCS + Verdi + UVM</b>. Las demás las mencionan cuando aplique.
+</div>
+
+---
+layout: default
+---
+
+# Resumen del Módulo 6
+
+<div class="mt-4">
+
+**Herramientas Synopsys y su rol:**
+
+- **VCS** — simulador (motor de todo el flujo de verificación)
+- **Verdi** — debug/waveform (donde vive el verification engineer)
+- **SpyGlass** — linter estático (previene bugs antes de simular)
+- **VC Formal** — verificación formal (prueba matemática)
+- **Design Compiler** — síntesis RTL → gates
+- **IC Compiler II / Fusion Compiler** — Place & Route
+- **PrimeTime** — sign-off timing
+
+**El flujo:** RTL → Lint → Simulación → Síntesis → GLS → PnR → GLS → PT → GDS
+
+**Ustedes trabajan en** verificación funcional (simulación + formal + coverage), no en implementación física. Pero ambos equipos se hablan constantemente.
+
+</div>
+
+---
+layout: end
+---
+
+# Fin del Módulo 6
+
+## Siguiente: cierre y quiz final
+
+<div class="mt-8 text-sm opacity-70">
+Preparación mental para el Bootcamp de la próxima semana.
+</div>
+
+---
+layout: section
+---
+
+<div class="module-badge">MÓDULO 7 · 15 min</div>
+
+# Cierre y puente al Bootcamp
+
+## Quiz final + mapa conceptual + qué viene la próxima semana
+
+<!--
+M7 es el cierre. Rápido y con energía.
+
+Timing:
+- Quiz final (10 min)
+- Mapa conceptual y preview del bootcamp (5 min)
+-->
+
+---
+layout: default
+---
+
+# Quiz final (10 min)
+
+Diez preguntas para calibrar qué se llevaron. Sin calificación oficial.
+
+<div class="text-sm mt-4">
+
+1. En una sola frase: ¿por qué existe la Functional Verification?
+2. ¿Qué diferencia hay entre Line Coverage y Functional Coverage?
+3. En un testbench, ¿cuál es la responsabilidad única del `driver`? ¿Y del `monitor`?
+4. ¿Qué es un `virtual interface` y qué problema resuelve?
+5. ¿Qué es un `covergroup` y para qué sirve el `cross`?
+6. ¿Cuál es la diferencia entre `|->` y `|=>` en una property SVA?
+7. ¿Cuál es la relación entre `mailbox #(T)` y `uvm_analysis_port`?
+8. ¿Qué hace el `scoreboard` y por qué necesita un reference model?
+9. Nombren las 4 fases más importantes de un componente UVM.
+10. ¿Cuál Synopsys tool usarían para: (a) simular un TB, (b) ver waveforms, (c) hacer STA?
+
+</div>
+
+<div class="mt-4 pro-tip">
+Las respuestas y discusión están en <code>docs/quiz_final.md</code>. Al final del quiz, discutir en voz alta las que la mayoría dudó.
+</div>
+
+---
+layout: default
+---
+
+# Mapa conceptual del curso
+
+```mermaid {scale: 0.55}
+mindmap
+  root((Functional<br/>Verification))
+    Motivación
+      Costo del bug
+      Verification Gap
+      70 pct del esfuerzo
+    Anatomía TB
+      Reloj / Reset
+      Estímulo
+      Observación
+      Checker
+      Referencia
+      Reporte
+    Cuatro Pilares
+      Constrained Random
+      Functional Coverage
+      Assertions SVA
+      Reference Model
+    Arquitectura OO
+      Transaction
+      Generator
+      Driver
+      Monitor
+      Scoreboard
+      Environment
+      Agent
+    UVM
+      Fases
+      Factory
+      Config DB
+      TLM
+      Reporting
+    Herramientas
+      VCS
+      Verdi
+      SpyGlass
+      VC Formal
+      DC/ICC2/PT
+```
+
+---
+layout: default
+---
+
+# Preview del Bootcamp
+
+Lo que van a hacer la próxima semana con lo que aprendieron hoy:
+
+<div class="text-sm mt-4">
+
+**Día 1** — Setup del entorno Synopsys, correr su primer TB UVM oficial contra un DUT proporcionado. Ejercicios de `uvm_config_db` y `uvm_report_server`.
+
+**Día 2** — Escribir `uvm_sequence_item`, `uvm_driver`, `uvm_monitor` desde cero. Es el Lab 4 con herencia UVM. Van a decir "esto ya lo hice".
+
+**Día 3** — Sequences: patrones de estímulos, virtual sequences, sequence libraries. Aleatoriedad avanzada.
+
+**Día 4** — Coverage-driven verification: covergroups en UVM, functional coverage cierre, cross coverage, regression con múltiples seeds. Uso de URG.
+
+**Día 5** — Un mini-proyecto: verificar un bloque real (por ejemplo un FIFO o un árbitro), con reporte de coverage y sign-off.
+
+</div>
+
+<div class="mt-4 pro-tip">
+El Bootcamp asume todo lo de este propedéutico. Si algo no les quedó claro hoy, este es el momento de preguntar.
+</div>
+
+---
+layout: default
+---
+
+# Cierre
+
+<div class="mt-6 text-lg">
+
+En 6 horas pasaron de:
+- **"¿Verification? Eso es agregarle un `initial begin` al Verilog"**
+
+A:
+- **"Ah, UVM es el Lab 4 con nombres formales y automatización industrial."**
+
+</div>
+
+<div class="mt-6">
+
+Lo más importante que se llevan:
+
+- **La arquitectura**. Siete piezas, una responsabilidad cada una, mailboxes entre ellas.
+- **La disciplina**. Constrained random + coverage + assertions + reference model. Los cuatro pilares.
+- **El vocabulario**. Cuando en el Bootcamp digan "sequence_item", "analysis_port", "phase" — no van a estar perdidos.
+- **La motivación**. Verification es el 70% del esfuerzo. Es donde están las vacantes. Es donde se ganan (o pierden) los millones.
+
+</div>
+
+<QuestionBox>
+Última pregunta: <b>¿tienen alguna duda antes de que cierren la sesión?</b>
+</QuestionBox>
+
+---
+layout: end
+---
+
+# Gracias
+
+## Nos vemos en el Bootcamp
+
+<div class="mt-8 text-sm opacity-70">
+Ing. Cesar Otamendi<br/>
+CINVESTAV Zacatenco · Departamento de Ingeniería Eléctrica<br/>
+Curso propedéutico de Functional Verification · 2026
+</div>
