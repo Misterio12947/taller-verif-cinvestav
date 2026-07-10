@@ -232,13 +232,45 @@
    La navegación se hace con teclado (flechas, espacio, PageDown).
    ============================================================ */
 
+/* Goto Dialog de Slidev (se activa con tecla G) — panel lateral con lista de slides
+ * En modo producción a veces queda enganchado y no responde ni a Escape ni a G.
+ * Solución definitiva: ocultarlo por ID.
+ */
+#slidev-goto-dialog,
+#slidev-goto-input,
+.autocomplete-list,
+.autocomplete,
+.slidev-goto,
+.slidev-goto-dialog,
+.slidev-slide-picker {
+  display: none !important;
+}
+
+/* Selectores conocidos de Slidev para navegación / TOC / drawer */
 .slidev-nav-controls,
 .slidev-nav,
 #slidev-nav,
 .slidev-controls,
 .slidev-controls-menu,
-.slidev-goto-dialog,
 .slidev-nav-drawer,
-[data-slidev-controls] {
+.slidev-page-navigation,
+.slidev-navbar,
+.slidev-sidebar,
+.slidev-menu,
+.slidev-toc,
+#slidev-toc,
+.nav-drawer,
+[data-slidev-controls],
+[data-slidev-menu],
+[data-slidev-nav],
+[aria-label*="navigation" i],
+[aria-label*="menu" i] {
+  display: none !important;
+}
+
+/* Contenedores overlay comunes (portal, drawer, modals) */
+.slidev-overlay,
+.slidev-drawer,
+.slidev-modal {
   display: none !important;
 }
