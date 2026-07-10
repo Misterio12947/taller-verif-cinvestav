@@ -1,170 +1,227 @@
 /* ============================================================
    Curso Propedéutico Functional Verification — Estilo CINVESTAV
    Paleta: azul institucional CINVESTAV + acentos técnicos
+   Ajustes de densidad para evitar overflow en canvas 1280x720
    ============================================================ */
 
 :root {
-  /* Paleta base */
-  --cinv-blue:      #003366;   /* Azul institucional CINVESTAV */
+  --cinv-blue:      #003366;
   --cinv-blue-lt:   #1a4d80;
-  --cinv-gold:      #d4a017;   /* Dorado acento */
+  --cinv-gold:      #d4a017;
   --cinv-gray-bg:   #f7f8fa;
   --cinv-gray-txt:  #2c2c2c;
 
-  /* Semánticos para verificación */
-  --verif-driver:    #2e86de;  /* Azul — driver / input */
-  --verif-monitor:   #10ac84;  /* Verde — monitor / observación */
-  --verif-scoreboard:#ee5253;  /* Rojo — checker / auditor */
-  --verif-coverage:  #ff9f43;  /* Naranja — coverage */
-  --verif-assertion: #a55eea;  /* Morado — assertions */
-  --verif-dut:       #576574;  /* Gris — DUT */
+  --verif-driver:    #2e86de;
+  --verif-monitor:   #10ac84;
+  --verif-scoreboard:#ee5253;
+  --verif-coverage:  #ff9f43;
+  --verif-assertion: #a55eea;
+  --verif-dut:       #576574;
 }
 
-/* --------- Slide base --------- */
+/* --------- Ajustes globales de densidad --------- */
 .slidev-layout {
   color: var(--cinv-gray-txt);
+  padding: 2rem 2.5rem !important;
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.slidev-layout.cover,
+.slidev-layout.section,
+.slidev-layout.end {
+  padding: 3rem !important;
 }
 
 .slidev-layout h1 {
   color: var(--cinv-blue);
   border-bottom: 3px solid var(--cinv-gold);
-  padding-bottom: 0.3em;
-  margin-bottom: 0.6em;
+  padding-bottom: 0.25em;
+  margin-bottom: 0.5em;
+  margin-top: 0;
+  font-size: 1.9em;
+  line-height: 1.15;
 }
 
 .slidev-layout h2 {
   color: var(--cinv-blue-lt);
+  margin-top: 0.4em;
+  margin-bottom: 0.4em;
+  font-size: 1.3em;
 }
 
-/* --------- Callouts para analogías --------- */
+.slidev-layout h3 {
+  color: var(--cinv-blue-lt);
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+  font-size: 1.1em;
+}
+
+.slidev-layout p,
+.slidev-layout li {
+  margin: 0.35em 0;
+}
+
+.slidev-layout ul,
+.slidev-layout ol {
+  margin: 0.4em 0;
+  padding-left: 1.3em;
+}
+
+/* --------- Callouts compactos --------- */
 .analogy {
   background: linear-gradient(135deg, #fff9e6 0%, #fff3cc 100%);
-  border-left: 6px solid var(--cinv-gold);
-  padding: 1em 1.2em;
-  border-radius: 6px;
-  margin: 1em 0;
+  border-left: 5px solid var(--cinv-gold);
+  padding: 0.6em 0.9em;
+  border-radius: 5px;
+  margin: 0.6em 0;
   font-style: italic;
+  font-size: 0.92em;
 }
 .analogy::before {
-  content: "🎭 Analogía — ";
+  content: "Analogía — ";
   font-weight: bold;
   font-style: normal;
   color: #a67c00;
 }
 
-/* --------- Callout de tip del instructor --------- */
 .pro-tip {
   background: #eaf4fb;
-  border-left: 6px solid var(--verif-driver);
-  padding: 0.8em 1em;
-  border-radius: 6px;
-  margin: 1em 0;
-  font-size: 0.9em;
+  border-left: 5px solid var(--verif-driver);
+  padding: 0.55em 0.85em;
+  border-radius: 5px;
+  margin: 0.6em 0;
+  font-size: 0.88em;
 }
 .pro-tip::before {
-  content: "💡 Tip del instructor — ";
+  content: "Tip del instructor — ";
   font-weight: bold;
   color: var(--verif-driver);
 }
 
-/* --------- Callout de pregunta al aula --------- */
 .question {
   background: #fdecea;
-  border-left: 6px solid var(--verif-scoreboard);
-  padding: 0.8em 1em;
-  border-radius: 6px;
-  margin: 1em 0;
+  border-left: 5px solid var(--verif-scoreboard);
+  padding: 0.55em 0.85em;
+  border-radius: 5px;
+  margin: 0.6em 0;
+  font-size: 0.92em;
 }
 .question::before {
-  content: "❓ Pregunta al aula — ";
+  content: "Pregunta al aula — ";
   font-weight: bold;
   color: var(--verif-scoreboard);
 }
 
-/* --------- Callout warning / gotcha --------- */
 .gotcha {
   background: #fff4e0;
-  border-left: 6px solid var(--verif-coverage);
-  padding: 0.8em 1em;
-  border-radius: 6px;
-  margin: 1em 0;
+  border-left: 5px solid var(--verif-coverage);
+  padding: 0.55em 0.85em;
+  border-radius: 5px;
+  margin: 0.6em 0;
+  font-size: 0.92em;
 }
 .gotcha::before {
-  content: "⚠️ Gotcha — ";
+  content: "Gotcha — ";
   font-weight: bold;
   color: #b8610a;
 }
 
-/* --------- Bloque código SystemVerilog --------- */
-.slidev-code {
-  font-size: 0.85em;
-  border-radius: 6px;
+/* --------- Bloques de código muy compactos --------- */
+.slidev-layout pre,
+.slidev-layout .slidev-code {
+  font-size: 0.72em !important;
+  line-height: 1.35 !important;
+  border-radius: 5px;
+  padding: 0.6em 0.9em !important;
+  margin: 0.5em 0 !important;
 }
 
-/* --------- Tabla comparativa --------- */
+.slidev-layout code {
+  font-size: 0.88em;
+}
+
+.slidev-layout p code,
+.slidev-layout li code,
+.slidev-layout td code {
+  font-size: 0.85em;
+  padding: 0.1em 0.35em;
+  background: #f0f2f5;
+  border-radius: 3px;
+}
+
+/* --------- Tablas densas pero legibles --------- */
 .slidev-layout table {
   border-collapse: collapse;
-  margin: 0.8em 0;
-  font-size: 0.9em;
+  margin: 0.5em 0;
+  font-size: 0.85em;
+  width: 100%;
 }
 .slidev-layout th {
   background: var(--cinv-blue);
   color: white;
-  padding: 0.5em 0.8em;
+  padding: 0.35em 0.65em;
   text-align: left;
+  font-weight: 600;
 }
 .slidev-layout td {
-  padding: 0.4em 0.8em;
+  padding: 0.3em 0.65em;
   border-bottom: 1px solid #ddd;
+  vertical-align: top;
 }
 .slidev-layout tr:nth-child(even) td {
   background: var(--cinv-gray-bg);
 }
 
-/* --------- Timing badge en esquina --------- */
+/* --------- Badges --------- */
 .timing-badge {
   position: absolute;
-  top: 1em;
-  right: 1em;
+  top: 0.8em;
+  right: 0.8em;
   background: var(--cinv-blue);
   color: white;
-  padding: 0.3em 0.7em;
-  border-radius: 20px;
-  font-size: 0.75em;
+  padding: 0.2em 0.6em;
+  border-radius: 15px;
+  font-size: 0.7em;
   font-weight: bold;
 }
 
-/* --------- Módulo badge --------- */
 .module-badge {
   display: inline-block;
   background: var(--cinv-gold);
   color: var(--cinv-blue);
-  padding: 0.2em 0.6em;
+  padding: 0.2em 0.55em;
   border-radius: 4px;
   font-size: 0.7em;
   font-weight: bold;
   letter-spacing: 0.05em;
-  margin-bottom: 0.5em;
+  margin-bottom: 0.3em;
 }
 
-/* --------- Grid layout helper para diagramas --------- */
+/* --------- Grid helpers --------- */
 .two-col {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 1.5em;
+  gap: 1.2em;
   align-items: start;
 }
 
 .three-col {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  gap: 1em;
+  gap: 0.9em;
 }
 
-/* --------- Mermaid diagrams --------- */
+/* --------- Mermaid --------- */
 .mermaid {
   background: white;
-  border-radius: 8px;
-  padding: 1em;
-  margin: 1em 0;
+  border-radius: 6px;
+  padding: 0.5em;
+  margin: 0.5em 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.slidev-layout .col-right {
+  padding-left: 1em;
 }
